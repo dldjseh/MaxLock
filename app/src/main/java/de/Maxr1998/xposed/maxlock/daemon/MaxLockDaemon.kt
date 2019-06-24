@@ -20,7 +20,9 @@ package de.Maxr1998.xposed.maxlock.daemon
 import android.app.IActivityManager
 import android.app.IProcessObserver
 import android.content.ComponentName
+import android.content.IIntentReceiver
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.*
 import android.util.Log
 import android_hidden.app.ActivityManager
@@ -35,15 +37,21 @@ class MaxLockDaemon {
     private var activityManager: IActivityManager = ActivityManager.getService()
     private val resultReceiver: IBinder = object : Binder() {
         override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
+            if (data.dataAvail() == 0)
+                return false
+            val packageName = data.readString() ?: return false
             return when (code) {
                 AppLockHelper.UNLOCK_CODE -> {
-                    val packageName = data.readString()
-                    if (packageName != null)
-                        appLockHelper.appUnlocked(packageName)
+                    appLockHelper.appUnlocked(packageName)
                     true
                 }
                 AppLockHelper.CLOSE_CODE -> {
-                    // TODO
+                    Log.d(TAG, "Received close for $packageName")
+                    val tasks = activityManager.getTasks(10)
+                    for (task in tasks) {
+                        Log.d(TAG, "Task [${task.id}, ${task.stackId}] ${task.description}, ${task.baseActivity} → ${task.topActivity}")
+                    }
+                    activityManager.setFocusedTask(tasks[1].id)
                     true
                 }
                 else -> false
@@ -59,6 +67,7 @@ class MaxLockDaemon {
                     val taskId = stackInfo.taskIds[0]
                     val packageName = activity.packageName
                     val activityName = activity.className
+                    Log.d(TAG, "Launched Task [$taskId] $packageName")
                     if (appLockHelper.wasAppSwitch(taskId, packageName) &&
                             appLockHelper.isAppLocked(packageName, activityName)) {
                         val intent = Intent(LOCKSCREEN_BASE_INTENT)
@@ -71,7 +80,11 @@ class MaxLockDaemon {
                                 launchStackId = stackInfo.stackId
                             launchTaskId = taskId
                         }
-                        activityManager.startActivityAndWait(null, null, intent, null, null, TAG, 1, 0, null, options.toBundle(), 0)
+                        activityManager::class.java.declaredMethods.forEach { m ->
+                            if (m.name == "startActivity")
+                                println("${m.name}(${m.parameterTypes.joinToString(", ") { it.simpleName }}): ${m.returnType.simpleName}")
+                        }
+                        activityManager.startActivity(null, null, intent, null, null, TAG, 1, 0, null, options.toBundle())
                     }
                 }
             } catch (t: Throwable) {
@@ -85,10 +98,22 @@ class MaxLockDaemon {
     private val appLockHelper = AppLockHelper(preferencesHelper)
 
     init {
+        val screenOffReceiver = object : IIntentReceiver.Stub() {
+            override fun performReceive(intent: Intent, resultCode: Int, data: String, extras: Bundle, ordered: Boolean, sticky: Boolean, sendingUser: Int) {
+                Log.d(TAG, "Screen turned off")
+            }
+
+            override fun asBinder(): IBinder {
+                return this
+            }
+        }
+
         // Unregister any old binder, register observer
         activityManager.apply {
             unregisterProcessObserver(processObserver)
             registerProcessObserver(processObserver)
+
+            registerReceiver(null, null, screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF), null, 0, 0)
         }
     }
 

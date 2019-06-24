@@ -17,7 +17,7 @@ class RemotePreferencesHelper(private val activityManager: IActivityManager) {
         val provider = contentProvider ?: run {
             val token: IBinder = Binder()
             val userHandle = 0 /* UserHandle.USER_SYSTEM */
-            return activityManager.getContentProviderExternal(PREFERENCE_PROVIDER_AUTHORITY, userHandle, token).provider.apply {
+            return activityManager.getContentProviderExternal(PREFERENCE_PROVIDER_AUTHORITY, userHandle, token, "").provider.apply {
                 contentProvider = this
             }
         }

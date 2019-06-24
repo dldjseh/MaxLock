@@ -59,7 +59,7 @@ android {
         }
         getByName("debug") {
             isDebuggable = true
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules-debug.pro")
             signingConfig = signingConfigMain
             versionNameSuffix = "-beta"
